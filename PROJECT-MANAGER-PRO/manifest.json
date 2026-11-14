@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "PROJECT MANAGER PRO — Chat & GitHub",
+  "version": "1.10.0",
+  "description": "PROJECT MANAGER PRO: обновление одной кнопкой через локальный помощник и GitHub.",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "tabs",
+    "scripting",
+    "activeTab",
+    "alarms",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*",
+    "https://api.github.com/*"
+  ],
+  "action": {
+    "default_title": "Открыть PROJECT MANAGER PRO"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://github.com/*",
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqy1BeowXOKJvBmWbQV17C0WXFcoWQaWCItlxgb929GvpA1vBN3fR4N+Toe7bwfs1z1xwTLzEj2Y3MviatxOZ2evW43xLUDg4L4kGsJfyCqFKDfql83T9HooswXoeFadIP/vQX1bjoe26znumcItopBGAkYKt9/bIyP/Qy4xda9gztw04AmZnWe5sBIrVnFK0OhEE9Ak+QE6J/f9Hq+dJuGoJvLt508R6zSX5VgsMrNAE5hhdN7B25tQ9HANZ2QQwa3wDblOUXtSVpRKdgTPPeSHwMUgNHow9g2iaR0o1Gw3Xay/v1tnvv8I+az2HnsSs8MzzM4WXMJvG6mJF1CHbowIDAQAB"
+}
