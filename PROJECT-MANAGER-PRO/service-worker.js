@@ -64,11 +64,22 @@ async function sendInBackgroundTab(project) {
         u.pathname.replace(/\/$/, "") === expectedPath;
     } catch (_) { return false; }
   });
+  // Reuse one existing ChatGPT tab for the whole queue. If this project's
+  // conversation is not already open, navigate the reusable tab to its saved URL.
+  let navigated = false;
   if (!tab) {
-    throw new Error("Привязанный чат сейчас не открыт в Chrome. Новую вкладку не создаю. Откройте сохранённый чат проекта в существующей вкладке и повторите отправку.");
+    const reusable = tabs
+      .filter(t => /^https:\/\/(chatgpt\.com|chat\.openai\.com)\//.test(t.url || ""))
+      .sort((a,b) => Number(b.active)-Number(a.active) || Number(b.lastAccessed||0)-Number(a.lastAccessed||0));
+    tab = reusable[0] || null;
+    if (!tab) {
+      throw new Error("Не найдена ни одна открытая вкладка ChatGPT. Откройте ChatGPT один раз — очередь будет переиспользовать эту вкладку для всех проектов.");
+    }
+    await chrome.tabs.update(tab.id, {url: project.chatUrl});
+    navigated = true;
   }
   try {
-    if (tab.status !== "complete") await waitForTabLoad(tab.id, 45000);
+    if (navigated || tab.status !== "complete") await waitForTabLoad(tab.id, 45000);
     await ensureContentScript(tab.id);
     let ready = false;
     let lastError = "Чат загружен в фоновой вкладке, ожидаю поле ввода.";
