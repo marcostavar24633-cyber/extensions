@@ -1,3 +1,5 @@
+# Compatibility fix: use basic parsing for Windows PowerShell 5.1
+# This avoids the Internet Explorer engine dependency in Invoke-WebRequest.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $repo = 'marcostavar24633-cyber/extensions'
@@ -53,7 +55,7 @@ try {
     if ($name -match '[\\:]' -or $name -in @('INSTALL.bat','UPDATE.bat','INSTALL-UPDATE-HELPER.bat','NativeHost.cs','updater-host.ps1','README.md')) { continue }
     $url = "https://raw.githubusercontent.com/$repo/$branch/$($file.path)"
     $out = Join-Path $stage $name
-    Invoke-WebRequest -Uri $url -OutFile $out -Headers @{ 'User-Agent'='PROJECT-MANAGER-PRO-Updater' } -TimeoutSec 30
+    Invoke-WebRequest -UseBasicParsing -ErrorAction Stop -Uri $url -OutFile $out -Headers @{ 'User-Agent'='PROJECT-MANAGER-PRO-Updater' } -TimeoutSec 30
   }
   $stagedManifestPath = Join-Path $stage 'manifest.json'
   if (-not (Test-Path $stagedManifestPath)) { throw 'В новой сборке отсутствует manifest.json.' }
