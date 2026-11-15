@@ -58,16 +58,16 @@ async function openChatInExistingTab(url){
 
 const chatCreationInProgress=new Set();
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function waitForTabReady(tabId,timeout=60000){
+async function waitForTabReady(tabId,timeout=25000){
   const start=Date.now();
   while(Date.now()-start<timeout){
     try{
       const tab=await chrome.tabs.get(tabId);
-      if(tab.status==='complete' && /^https:\/\/(chatgpt\.com|chat\.openai\.com)\//.test(tab.url||'')) return tab;
+      if(tab.status==='complete' && /^https:\/\/(chatgpt\\.com|chat\\.openai\\.com)\\//.test(tab.url||''))return tab;
     }catch(_){throw new Error('Вкладка ChatGPT была закрыта до завершения создания чата.')}
-    await delay(300);
+    await delay(250);
   }
-  throw new Error('ChatGPT не загрузился за 60 секунд. Проверьте подключение и авторизацию.');
+  throw new Error('ChatGPT не загрузился за 25 секунд. Проверьте подключение и авторизацию.');
 }
 async function createRepoChat(p){
   if(p.chatUrl){await openChatInExistingTab(p.chatUrl);return}
@@ -77,53 +77,50 @@ async function createRepoChat(p){
   chatCreationInProgress.add(p.id);
   const button=document.querySelector(`[data-action="new-chat"][data-id="${CSS.escape(p.id)}"]`);
   if(button){button.disabled=true;button.textContent='Создаём…'}
-  notice(`Используем уже открытую вкладку ChatGPT для создания чата ${p.name}. Новая вкладка не создаётся.`);
+  notice(`Открываем новый диалог проекта ${p.name} в уже открытой вкладке ChatGPT…`);
   try{
-    let tab=await findExistingChatTab();
-    if(!tab)throw new Error('Не найдена открытая вкладка ChatGPT. Откройте ChatGPT вручную и повторите. Новая вкладка не создавалась.');
-    // Reuse the existing ChatGPT tab and navigate it to a blank conversation.
+    const tab=await findExistingChatTab();
+    if(!tab)throw new Error('Не найдена открытая вкладка ChatGPT. Откройте ChatGPT вручную и повторите.');
     await chrome.tabs.update(tab.id,{url:'https://chatgpt.com/',active:true});
-    await waitForTabReady(tab.id,60000);
-    let result=null,lastError='';
-    for(let attempt=0;attempt<3;attempt++){
-      try{
-        const probe=await chrome.tabs.sendMessage(tab.id,{type:'PCS_DEBUG_COMPOSER'});
-        if(!probe?.ok)throw new Error(`Поле ввода ChatGPT не обнаружено. URL: ${probe?.url||'неизвестен'}, состояние: ${probe?.readyState||'неизвестно'}.`);
-        result=await chrome.tabs.sendMessage(tab.id,{
-          type:'PCS_CREATE_PROJECT_CHAT',
-          projectName:p.name,
-          shortName:(p.full_name||p.name).split('/').pop(),
-          repoFullName:p.full_name||'',
-          repoUrl
-        });
-        break;
-      }catch(e){
-        lastError=e.message||String(e);
-        try{await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});}catch(injectError){lastError=injectError.message||lastError;}
-        await delay(700);
-      }
+    await waitForTabReady(tab.id,25000);
+
+    // Ensure the current extension content script is attached after navigation.
+    let probe=null;
+    try{probe=await chrome.tabs.sendMessage(tab.id,{type:'PCS_DEBUG_COMPOSER'});}catch(_){}
+    if(!probe?.ok){
+      await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});
+      await delay(250);
+      probe=await chrome.tabs.sendMessage(tab.id,{type:'PCS_DEBUG_COMPOSER'});
     }
-    if(!result)throw new Error(`Не удалось связаться со скриптом открытого чата: ${lastError}`);
-    if(!result.ok)throw new Error(result.error||'Не удалось отправить информацию о проекте в ChatGPT.');
+    if(!probe?.ok)throw new Error('Поле ввода ChatGPT не готово. Проверьте авторизацию и повторите.');
+
+    const result=await chrome.tabs.sendMessage(tab.id,{
+      type:'PCS_CREATE_PROJECT_CHAT',
+      projectName:p.name,
+      shortName:(p.full_name||p.name).split('/').pop(),
+      repoFullName:p.full_name||'',
+      repoUrl
+    });
+    if(!result?.ok)throw new Error(result?.error||'Не удалось отправить название проекта в ChatGPT.');
     const chatUrl=safeUrl(result.chatUrl);
-    if(!chatUrl||!/^https:\/\/(chatgpt\.com|chat\.openai\.com)\/c\/[^/]+/.test(chatUrl))throw new Error('ChatGPT не вернул корректный URL нового диалога; привязка не сохранена.');
+    if(!chatUrl||!/^https:\/\/(chatgpt\\.com|chat\\.openai\\.com)\/c\/[^/]+/.test(chatUrl))throw new Error('ChatGPT не вернул корректный URL нового диалога; привязка не сохранена.');
     const current=projects.find(x=>x.id===p.id);
     if(!current)throw new Error('Проект больше не найден в каталоге.');
     current.chatUrl=chatUrl;
-    current.chatTitle=(p.full_name||p.name).split('/').pop();
+    current.chatTitle=p.name;
     current.chatBinding='created-by-project-manager';
     current.chatCreatedAt=new Date().toISOString();
     current.chatCheck='available';
     current.chatCheckAt=new Date().toISOString();
-    current.lastStatus='Новый чат создан в существующей вкладке; информация проекта отправлена';
+    current.lastStatus='Название проекта и ссылка GitHub отправлены; новый чат привязан';
     current.lastResult='ok';
     current.updatedAt=Date.now();
     await persist();
-    notice(`Информация проекта ${p.name} отправлена. Чат привязан без создания новой вкладки.`, 'ok');
-    addLog(`${p.name}: новый диалог создан в существующей вкладке, название и GitHub URL отправлены`, 'ok');
+    notice(`Проект «${p.name}»: название отправлено и чат привязан.`,'ok');
+    addLog(`${p.name}: название проекта подтверждено в первом сообщении нового чата`,'ok');
   }catch(e){
-    notice(`${p.name}: ${e.message}`, 'error');
-    addLog(`${p.name}: ошибка создания/отправки чата — ${e.message}`, 'fail');
+    notice(`${p.name}: ${e.message}`,'error');
+    addLog(`${p.name}: ошибка создания/отправки чата — ${e.message}`,'fail');
   }finally{
     chatCreationInProgress.delete(p.id);
     render();
