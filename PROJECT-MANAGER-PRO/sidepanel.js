@@ -164,10 +164,10 @@ async function bindCurrent(p){
   try{
     const focused=await chrome.windows.getLastFocused({populate:false});
     const inWindow=focused?.id!=null?await chrome.tabs.query({windowId:focused.id}):[];
-    let tab=(inWindow||[]).find(t=>t.active&&/^https:\/\/(chatgpt\\.com|chat\\.openai\\.com)\/c\//.test(t.url||''));
+    let tab=(inWindow||[]).find(t=>t.active&&/^https:\/\/(chatgpt\.com|chat\.openai\.com)\/c\//.test(t.url||''));
     if(!tab){
       const all=await chrome.tabs.query({});
-      const chats=all.filter(t=>/^https:\/\/(chatgpt\\.com|chat\\.openai\\.com)\/c\//.test(t.url||''));
+      const chats=all.filter(t=>/^https:\/\/(chatgpt\.com|chat\.openai\.com)\/c\//.test(t.url||''));
       chats.sort((a,b)=>Number(b.active)-Number(a.active)||Number(b.lastAccessed||0)-Number(a.lastAccessed||0));
       tab=chats[0]||null;
     }
