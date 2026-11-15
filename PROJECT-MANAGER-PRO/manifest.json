@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "PROJECT MANAGER PRO — Chat & GitHub",
-  "version": "1.10.5",
-  "description": "PROJECT MANAGER PRO: исправлено отображение адреса сайта и опубликованного домена в карточке каждого проекта.",
+  "version": "1.10.6",
+  "description": "PROJECT MANAGER PRO: автоматически формирует адрес GitHub Pages для каждого проекта по имени репозитория.",
   "minimum_chrome_version": "114",
   "permissions": [
     "storage",
