@@ -141,16 +141,61 @@ function openForm(p){$('projectForm').reset();$('projectId').value=p?.id||'';$('
 function formProject(){const old=projects.find(p=>p.id===$('projectId').value);const gh=safeUrl($('githubInput').value);let repo=old?.full_name||'';try{const u=new URL(gh);if(u.hostname==='github.com')repo=u.pathname.split('/').filter(Boolean).slice(0,2).join('/')}catch{}return normalizeProject({...old,id:old?.id||crypto.randomUUID(),name:$('nameInput').value.trim(),full_name:repo,url:gh,githubUrl:gh,description:$('descriptionInput').value.trim(),status:$('projectStatus').value,priority:$('priorityInput').value,siteUrl:safeUrl($('siteInput').value),deployUrl:safeUrl($('deployInput').value),chatUrl:safeUrl($('chatInput').value),audit:$('auditCheck').checked,seo:$('seoCheck').checked,responsive:$('responsiveCheck').checked,published:$('publishCheck').checked,nextTask:$('taskInput').value.trim(),createdAt:old?.createdAt||Date.now(),updatedAt:Date.now()})}
 function details(id){const p=projects.find(x=>x.id===id);if(!p)return;const links=projectLinks(p);$('detailContent').innerHTML=`<div class="detail-content"><div class="dialog-head"><div><div class="eyebrow">КАРТОЧКА ПРОЕКТА</div><h2>${esc(p.name)}</h2></div><button class="icon-btn" data-close="detailDialog">✕</button></div><p class="muted">${esc(p.description||'Описание не добавлено')}</p><span class="pill ${esc(p.status)}">${STATUS[p.status]}</span><div class="detail-links">${links.length?links.map(([n,u])=>`<a href="${esc(safeUrl(u))}" target="_blank" rel="noopener">${esc(n)} ↗<br><small>${esc(u)}</small></a>`).join(''):'<span class="muted">Ссылки не добавлены.</span>'}</div><div class="form-section-title">КАЧЕСТВО</div><div class="quality">${[['Аудит',p.audit],['SEO',p.seo],['Адаптивность',p.responsive],['Публикация',p.published]].map(([n,v])=>`<span class="${v?'ok':''}">${v?'✓':'○'} ${n}</span>`).join('')}</div><div class="detail-task"><b>СЛЕДУЮЩАЯ ЗАДАЧА</b><p>${esc(p.nextTask||'Не указана')}</p></div><div class="detail-task"><b>СОСТОЯНИЕ ЧАТА</b><p>${esc(p.chatTitle||p.chatUrl||'Чат не привязан')}</p><p>${esc(p.lastStatus||'Нет истории отправки')}</p></div><div class="dialog-actions"><button class="secondary-btn" data-close="detailDialog">Закрыть</button><button class="primary-btn" data-action="edit-from-detail" data-id="${esc(p.id)}">Изменить</button></div></div>`;$('detailDialog').showModal()}
 async function bindCurrent(p){
-  const tab=await findExistingChatTab();
-  if(!tab?.url){notice('Не найдена открытая вкладка ChatGPT. Откройте нужный чат и повторите привязку.','error');return}
-  const url=tab.url.split('?')[0].split('#')[0];
-  if(!/^https:\/\/(chatgpt\.com|chat\.openai\.com)\/c\//.test(url)){
-    notice('Откройте именно диалог ChatGPT (адрес должен содержать /c/) и повторите привязку.','error');return;
+  try{
+    // Use only the active tab in the side panel's window to avoid binding a different chat.
+    const activeTabs=await chrome.tabs.query({active:true,lastFocusedWindow:true});
+    const tab=activeTabs&&activeTabs[0];
+    if(!tab?.url){
+      notice('Не удалось определить активную вкладку. Откройте нужный диалог ChatGPT и повторите привязку.','error');
+      return;
+    }
+    let parsed;
+    try{parsed=new URL(tab.url)}catch(_){
+      notice('Не удалось прочитать адрес активной вкладки.','error');
+      return;
+    }
+    if(!['chatgpt.com','chat.openai.com'].includes(parsed.hostname)||!parsed.pathname.startsWith('/c/')){
+      notice('Сейчас активна не страница диалога ChatGPT. Переключитесь на нужный чат (адрес должен содержать /c/), затем нажмите «Привязать чат» ещё раз.','error');
+      return;
+    }
+    const url=parsed.origin+parsed.pathname.replace(/\/$/,'');
+    const duplicate=projects.find(x=>{
+      if(x.id===p.id||!x.chatUrl)return false;
+      try{const u=new URL(x.chatUrl);return u.hostname===parsed.hostname&&u.pathname.replace(/\/$/,'')===parsed.pathname.replace(/\/$/,'')}catch(_){return false}
+    });
+    if(duplicate){
+      notice(`Этот чат уже привязан к проекту «${duplicate.name}». Сначала отвяжите его там.`,'error');
+      return;
+    }
+    p.chatUrl=url;
+    p.chatTitle=tab.title||p.name;
+    p.chatBinding='manual-current-active-tab';
+    p.chatBoundAt=new Date().toISOString();
+    p.chatCheck='available';
+    p.chatCheckAt=new Date().toISOString();
+    p.lastStatus='Чат привязан вручную; сохранение проверено';
+    p.lastResult='ok';
+    await persist();
+    const saved=await chrome.storage.local.get(['projects',PM_KEY]);
+    const savedProjects=Array.isArray(saved.projects)?saved.projects:(Array.isArray(saved[PM_KEY])?saved[PM_KEY]:[]);
+    const confirmed=savedProjects.find(x=>x.id===p.id&&x.chatUrl===url);
+    if(!confirmed){
+      p.chatUrl='';
+      p.chatTitle='';
+      p.chatBinding='';
+      p.lastStatus='Ошибка проверки сохранения привязки';
+      p.lastResult='fail';
+      await persist();
+      notice('Привязка не подтверждена: ссылка не найдена в локальном хранилище. Повторите попытку.','error');
+      addLog(`${p.name}: ошибка проверки сохранения ручной привязки`,'fail');
+      return;
+    }
+    notice(`Чат успешно привязан к проекту «${p.name}».`,'ok');
+    addLog(`${p.name}: вручную привязан активный чат ${url}; сохранение подтверждено`,'ok');
+  }catch(error){
+    console.error('PROJECT MANAGER PRO bindCurrent error:',error);
+    notice(`Не удалось привязать чат: ${error?.message||'неизвестная ошибка'}`,'error');
   }
-  const duplicate=projects.find(x=>x.id!==p.id&&x.chatUrl===url);
-  if(duplicate){notice(`Этот чат уже привязан к ${duplicate.name}.`,'error');return}
-  p.chatUrl=url;p.chatTitle=tab.title||p.name;p.chatBinding='manual-current-tab';p.chatBoundAt=new Date().toISOString();p.chatCheck='available';p.chatCheckAt=new Date().toISOString();p.lastStatus='Чат вручную привязан';p.lastResult='ok';
-  await persist();notice(`Текущий чат привязан к ${p.name}.`,'ok');addLog(`${p.name}: вручную привязан чат ${url}`,'ok');
 }
 async function syncGithub(){const token=$('token').value.trim();if(token)await chrome.storage.local.set({githubToken:token});$('syncGithub').disabled=true;notice('Синхронизируем репозитории GitHub…');try{const r=await chrome.runtime.sendMessage({type:'PCS_SYNC_REPOSITORIES'});if(!r?.ok){const m={'missing-token':'Сохраните GitHub-токен или используйте сканирование открытой страницы.','http-401':'GitHub отклонил токен.','http-403':'Недостаточно прав или превышен лимит GitHub API.','invalid-response':'GitHub вернул неожиданный ответ.'};throw new Error(m[r?.reason]||`Ошибка GitHub: ${r?.reason||'неизвестно'}`)}const d=await chrome.storage.local.get(['projects','lastRepoSync']);const merged=new Map();for(const raw of (d.projects||[])){const item=normalizeProject(raw),key=(item.full_name||item.name).split('/').pop().toLowerCase();merged.set(key,{...(merged.get(key)||{}),...item})}projects=[...merged.values()].map(normalizeProject);await persist();notice(`GitHub обновлён: ${r.count} репозиториев, новых: ${r.newRepos?.length||0}.`,'ok');addLog(`Синхронизация GitHub: ${r.count} репозиториев`,'ok')}catch(e){notice(e.message,'error')}finally{$('syncGithub').disabled=false}}
 async function scanGithubPage(){const tab=await activeTab();if(!tab?.id||!/^https:\/\/github\.com\//.test(tab.url||'')){notice('Откройте GitHub — страницу репозиториев или профиль.','error');return}try{let r;try{r=await chrome.tabs.sendMessage(tab.id,{type:'PCS_SCAN_GITHUB'})}catch(_){await chrome.scripting.executeScript({target:{tabId:tab.id},files:['content.js']});r=await chrome.tabs.sendMessage(tab.id,{type:'PCS_SCAN_GITHUB'})}if(!r?.ok)throw new Error('Не удалось прочитать страницу GitHub');const map=new Map(projects.map(p=>[(p.full_name||p.name).split('/').pop().toLowerCase(),p]));for(const repo of r.repositories||[]){const key=repo.full_name.split('/').pop().toLowerCase(),old=map.get(key)||{};map.set(key,normalizeProject({...old,...repo,name:old.name||repo.full_name,full_name:repo.full_name,url:repo.url,githubUrl:repo.url}))}projects=[...map.values()];await persist();notice(`На открытой странице найдено ${r.repositories.length} репозиториев.`,'ok')}catch(e){notice(e.message,'error')}}
@@ -159,7 +204,7 @@ async function preflight(){const linked=projects.filter(p=>p.chatUrl);if(!linked
 async function batch(selectedOnly){const queue=projects.filter(p=>p.chatUrl&&/^https:\/\/(chatgpt\.com|chat\.openai\.com)\/c\//.test(p.chatUrl)&&(!selectedOnly||selected.has(p.full_name||p.name)));if(!queue.length){notice(selectedOnly?'Среди выбранных проектов нет привязанных доступных чатов.':'Нет привязанных доступных чатов.','error');return}const cycleCount=Math.max(1,Math.min(1000,parseInt($('cycleCount').value,10)||1));const interval=Math.max(1,Math.min(3600,parseInt($('cycleInterval').value,10)||10));$('queueState').textContent='Выполняется';$('progress').textContent=`Запуск: ${queue.length} проектов · ${cycleCount} циклов`;try{const r=await chrome.runtime.sendMessage({type:'PCS_RUN_QUEUE',projects:queue.map(p=>({...p,full_name:p.full_name||p.name})),cycleCount,cycleIntervalSeconds:interval});if(!r?.ok)throw new Error(r?.error||'Очередь не запустилась');$('progress').textContent=r.summary;$('queueState').textContent=r.stopped?'Остановлена':'Завершена';addLog(r.summary,r.failed?'fail':'ok');const d=await chrome.storage.local.get('projects');projects=(d.projects||projects).map(normalizeProject);render()}catch(e){$('queueState').textContent='Ошибка';$('progress').textContent=e.message;notice(e.message,'error')}}
 function projectMenu(id){const p=projects.find(x=>x.id===id);if(!p)return;const choice=prompt(`Действия для «${p.name}»:\n1 — открыть рабочий чат\n2 — архивировать / восстановить\n3 — удалить\n4 — открыть все ссылки`);if(choice==='1')openLink(p.chatUrl);else if(choice==='2'){p.status=p.status==='archived'?'planned':'archived';p.updatedAt=Date.now();persist().then(()=>toast(p.status==='archived'?'Проект архивирован':'Проект восстановлен'))}else if(choice==='3'&&confirm(`Удалить «${p.name}»?`)){projects=projects.filter(x=>x.id!==id);selected.delete(p.full_name||p.name);persist().then(()=>toast('Проект удалён'))}else if(choice==='4')projectLinks(p).forEach(x=>openLink(x[1]))}
 
-const PMPRO_VERSION='1.10.6';
+const PMPRO_VERSION='1.10.7';
 function setUpdateStatus(message,kind=''){
   const el=$('updateStatus'); if(!el)return;
   el.textContent=message; el.className=`update-status ${kind}`;
