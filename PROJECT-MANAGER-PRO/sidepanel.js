@@ -29,6 +29,8 @@ const PROJECT_REPOSITORIES={
 function normalizeProject(p){
   const name=p.name||p.full_name||p.fullName||'Без названия';
   let repo=p.full_name||p.fullName||'';
+  // Old versions persisted the display name into full_name; accept it only if it is owner/repo.
+  if(!/^[^/]+\/[^/]+$/.test(String(repo)))repo='';
   if(!repo){
     const gh=safeUrl(p.githubUrl||p.url||p.html_url);
     try{const u=new URL(gh);if(u.hostname==='github.com')repo=u.pathname.split('/').filter(Boolean).slice(0,2).join('/')}catch(_){}
@@ -43,7 +45,8 @@ function formatDate(ts){if(!ts)return '—';try{return new Intl.DateTimeFormat('
 function githubPagesUrl(p){
   const explicit=safeUrl(p.githubPagesUrl||p.pagesUrl||p.github_pages_url);
   if(explicit)return explicit;
-  const full=String(p.full_name||p.fullName||'').trim();
+  let full=String(p.full_name||p.fullName||'').trim();
+  if(!/^[^/]+\/[^/]+$/.test(full))full=PROJECT_REPOSITORIES[String(p.name||'').trim().toUpperCase()]||'';
   const match=full.match(/^([^/]+)\/([^/]+)$/);
   if(!match)return '';
   const owner=match[1],repoName=match[2];
@@ -211,7 +214,7 @@ async function preflight(){const linked=projects.filter(p=>p.chatUrl);if(!linked
 async function batch(selectedOnly){const queue=projects.filter(p=>p.chatUrl&&/^https:\/\/(chatgpt\.com|chat\.openai\.com)\/c\//.test(p.chatUrl)&&(!selectedOnly||selected.has(p.full_name||p.name)));if(!queue.length){notice(selectedOnly?'Среди выбранных проектов нет привязанных доступных чатов.':'Нет привязанных доступных чатов.','error');return}const cycleCount=Math.max(1,Math.min(1000,parseInt($('cycleCount').value,10)||1));const interval=Math.max(1,Math.min(3600,parseInt($('cycleInterval').value,10)||10));$('queueState').textContent='Выполняется';$('progress').textContent=`Запуск: ${queue.length} проектов · ${cycleCount} циклов`;try{const r=await chrome.runtime.sendMessage({type:'PCS_RUN_QUEUE',projects:queue.map(p=>({...p,full_name:p.full_name||p.name})),cycleCount,cycleIntervalSeconds:interval});if(!r?.ok)throw new Error(r?.error||'Очередь не запустилась');$('progress').textContent=r.summary;$('queueState').textContent=r.stopped?'Остановлена':'Завершена';addLog(r.summary,r.failed?'fail':'ok');const d=await chrome.storage.local.get('projects');projects=(d.projects||projects).map(normalizeProject);render()}catch(e){$('queueState').textContent='Ошибка';$('progress').textContent=e.message;notice(e.message,'error')}}
 function projectMenu(id){const p=projects.find(x=>x.id===id);if(!p)return;const choice=prompt(`Действия для «${p.name}»:\n1 — открыть рабочий чат\n2 — архивировать / восстановить\n3 — удалить\n4 — открыть все ссылки`);if(choice==='1')openLink(p.chatUrl);else if(choice==='2'){p.status=p.status==='archived'?'planned':'archived';p.updatedAt=Date.now();persist().then(()=>toast(p.status==='archived'?'Проект архивирован':'Проект восстановлен'))}else if(choice==='3'&&confirm(`Удалить «${p.name}»?`)){projects=projects.filter(x=>x.id!==id);selected.delete(p.full_name||p.name);persist().then(()=>toast('Проект удалён'))}else if(choice==='4')projectLinks(p).forEach(x=>openLink(x[1]))}
 
-const PMPRO_VERSION='1.10.8';
+const PMPRO_VERSION='1.10.9';
 function setUpdateStatus(message,kind=''){
   const el=$('updateStatus'); if(!el)return;
   el.textContent=message; el.className=`update-status ${kind}`;
