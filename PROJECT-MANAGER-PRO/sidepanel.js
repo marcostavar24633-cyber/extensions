@@ -151,7 +151,7 @@ function callUpdater(action){
     let port;
     const finish=(err,value)=>{if(settled)return;settled=true;try{port?.disconnect()}catch(_){};err?reject(err):resolve(value)};
     try{port=chrome.runtime.connectNative('com.pmpro.updater');}
-    catch(e){reject(new Error('Локальный помощник обновления не установлен. Один раз запустите INSTALL.bat из установочного комплекта.'));return;}
+    catch(e){reject(new Error('Локальный помощник обновления не установлен. Один раз запустите INSTALL-UPDATE-HELPER.bat из папки расширения.'));return;}
     port.onMessage.addListener(message=>finish(message?.ok?null:new Error(message?.error||'Помощник не смог выполнить обновление.'),message));
     port.onDisconnect.addListener(()=>{if(!settled){const err=chrome.runtime.lastError;finish(new Error(err?.message||'Нет связи с помощником обновления. Проверьте его установку.'));}});
     try{port.postMessage({action,version:PMPRO_VERSION});}catch(e){finish(e)}
