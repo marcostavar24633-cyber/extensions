@@ -43,19 +43,28 @@ try {
     Send-Response @{ ok=$true; updated=$false; currentVersion=$localVersion.ToString(); latestVersion=$remoteVersion.ToString(); updateAvailable=$true; message="Доступна версия $($remoteVersion.ToString()). Нажмите «Обновить» ещё раз для установки." }
     exit 0
   }
-  $api = "https://api.github.com/repos/$repo/git/trees/$branch`?recursive=1"
-  $tree = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent'='PROJECT-MANAGER-PRO-Updater'; 'Accept'='application/vnd.github+json' } -TimeoutSec 30
-  $files = @($tree.tree | Where-Object { $_.type -eq 'blob' -and $_.path.StartsWith($prefix) -and $_.path.Substring($prefix.Length) -notmatch '/' })
-  if ($files.Count -lt 2 -or -not ($files.path -contains ($prefix + 'manifest.json'))) { throw 'В GitHub не найдена опубликованная сборка расширения.' }
   $parent = Split-Path -Parent $target
-  $stage = Join-Path $parent ('PROJECT-MANAGER-PRO-stage-' + [guid]::NewGuid().ToString('N'))
+  $work = Join-Path $parent ('PROJECT-MANAGER-PRO-archive-' + [guid]::NewGuid().ToString('N'))
+  $stage = Join-Path $work 'stage'
+  $archive = Join-Path $work 'source.zip'
   New-Item -ItemType Directory -Path $stage -Force | Out-Null
-  foreach ($file in $files) {
-    $name = $file.path.Substring($prefix.Length)
-    if ($name -match '[\\:]' -or $name -in @('INSTALL.bat','UPDATE.bat','INSTALL-UPDATE-HELPER.bat','NativeHost.cs','updater-host.ps1','README.md')) { continue }
-    $url = "https://raw.githubusercontent.com/$repo/$branch/$($file.path)"
-    $out = Join-Path $stage $name
-    Invoke-WebRequest -UseBasicParsing -ErrorAction Stop -Uri $url -OutFile $out -Headers @{ 'User-Agent'='PROJECT-MANAGER-PRO-Updater' } -TimeoutSec 30
+  try {
+    $archiveUrl = "https://codeload.github.com/$repo/zip/refs/heads/$branch"
+    Invoke-WebRequest -UseBasicParsing -ErrorAction Stop -Uri $archiveUrl -OutFile $archive -Headers @{ 'User-Agent'='PROJECT-MANAGER-PRO-Updater' } -TimeoutSec 120
+    Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $work 'extract') -Force
+    $extractRoot = Join-Path $work 'extract'
+    $projectFolder = Get-ChildItem -LiteralPath $extractRoot -Directory | Select-Object -First 1
+    if (-not $projectFolder) { throw 'Архив GitHub пуст или имеет неизвестную структуру.' }
+    $sourceFolder = Join-Path $projectFolder.FullName 'PROJECT-MANAGER-PRO'
+    if (-not (Test-Path -LiteralPath (Join-Path $sourceFolder 'manifest.json'))) { throw 'В архиве GitHub не найдена папка PROJECT-MANAGER-PRO с manifest.json.' }
+    Get-ChildItem -LiteralPath $sourceFolder -File -Force | ForEach-Object {
+      $name = $_.Name
+      if ($name -match '[\\:]' -or $name -in @('INSTALL.bat','UPDATE.bat','INSTALL-UPDATE-HELPER.bat','REPAIR-NATIVE-HOST.bat','REPAIR-NATIVE-HOST.ps1','NativeHost.cs','updater-host.ps1','README.md')) { return }
+      Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $stage $name) -Force
+    }
+  } catch {
+    if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
+    throw
   }
   $stagedManifestPath = Join-Path $stage 'manifest.json'
   if (-not (Test-Path $stagedManifestPath)) { throw 'В новой сборке отсутствует manifest.json.' }
@@ -73,7 +82,7 @@ try {
   else { New-Item -ItemType Directory -Path $target -Force | Out-Null }
   try {
     Get-ChildItem -LiteralPath $stage -File -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $target -Force }
-    Remove-Item -LiteralPath $stage -Recurse -Force
+    Remove-Item -LiteralPath $work -Recurse -Force
   } catch {
     if (Test-Path $backup) {
       if (Test-Path $target) { Remove-Item -LiteralPath $target -Recurse -Force }
