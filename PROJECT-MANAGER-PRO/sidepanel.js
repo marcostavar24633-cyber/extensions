@@ -16,7 +16,27 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const safeUrl=v=>{try{const u=new URL(v);return ['http:','https:'].includes(u.protocol)?u.href:''}catch{return ''}};
 function toast(s){$('toast').textContent=s;$('toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').classList.remove('show'),2400)}
 function notice(s,type=''){const n=$('integrationNotice');n.textContent=s;n.className=`notice ${type}`}
-function normalizeProject(p){const name=p.name||p.full_name||p.fullName||'Без названия';const repo=p.full_name||p.fullName||'';return {...p,id:String(p.id||repo||name.toLowerCase().replace(/[^a-z0-9а-яё]+/gi,'-')),name,full_name:repo||name,url:safeUrl(p.url||p.html_url||p.githubUrl)||(repo?`https://github.com/${repo}`:''),githubUrl:safeUrl(p.githubUrl||p.url||p.html_url)||(repo?`https://github.com/${repo}`:''),siteUrl:safeUrl(p.siteUrl||p.websiteUrl||p.website_url||p.liveUrl||p.live_url||p.productionUrl||p.production_url||p.deployUrl||p.vercelUrl),deployUrl:safeUrl(p.deployUrl||p.vercelUrl),chatUrl:safeUrl(p.chatUrl),status:STATUS[p.status]?p.status:'planned',priority:['high','low','normal'].includes(p.priority)?p.priority:'normal',audit:!!p.audit,seo:!!p.seo,responsive:!!p.responsive,published:!!(p.published||p.publishCheck),createdAt:p.createdAt||Date.now(),updatedAt:p.updatedAt||Date.now()}}
+const PROJECT_REPOSITORIES={
+  'SLOPAY-BUKET':'marcostavar24633-cyber/slopay-buket',
+  'PENKA':'marcostavar24633-cyber/Penka',
+  'RAKI':'marcostavar24633-cyber/raki',
+  'HAIR':'marcostavar24633-cyber/hair',
+  'PHOTOGRAF':'marcostavar24633-cyber/Photograf',
+  'DOMA TECH':'marcostavar24633-cyber/doma-tech',
+  'LANDING STUDIO':'marcostavar24633-cyber/landing-studio',
+  'AETERIUM':'marcostavar24633-cyber/AETERIUM'
+};
+function normalizeProject(p){
+  const name=p.name||p.full_name||p.fullName||'Без названия';
+  let repo=p.full_name||p.fullName||'';
+  if(!repo){
+    const gh=safeUrl(p.githubUrl||p.url||p.html_url);
+    try{const u=new URL(gh);if(u.hostname==='github.com')repo=u.pathname.split('/').filter(Boolean).slice(0,2).join('/')}catch(_){}
+  }
+  if(!repo)repo=PROJECT_REPOSITORIES[String(name).trim().toUpperCase()]||'';
+  const githubUrl=safeUrl(p.githubUrl||p.url||p.html_url)||(repo?`https://github.com/${repo}`:'');
+  return {...p,id:String(p.id||repo||name.toLowerCase().replace(/[^a-z0-9а-яё]+/gi,'-')),name,full_name:repo||name,url:safeUrl(p.url||p.html_url||p.githubUrl)||githubUrl,githubUrl,siteUrl:safeUrl(p.siteUrl||p.websiteUrl||p.website_url||p.liveUrl||p.live_url||p.productionUrl||p.production_url||p.deployUrl||p.vercelUrl),deployUrl:safeUrl(p.deployUrl||p.vercelUrl),chatUrl:safeUrl(p.chatUrl),status:STATUS[p.status]?p.status:'planned',priority:['high','low','normal'].includes(p.priority)?p.priority:'normal',audit:!!p.audit,seo:!!p.seo,responsive:!!p.responsive,published:!!(p.published||p.publishCheck),createdAt:p.createdAt||Date.now(),updatedAt:p.updatedAt||Date.now()}
+}
 async function persist(){projects=projects.map(normalizeProject);await chrome.storage.local.set({projects,[PM_KEY]:projects,selectedRepos:[...selected],activityLog:logEntries});$('saveState').textContent='Сохранено локально';setTimeout(()=>$('saveState').textContent='Готово',1300);render()}
 async function init(){const data=await chrome.storage.local.get(['projects',PM_KEY,'selectedRepos','activityLog','githubToken','chatCandidates','chatScanDiagnostics']);const pcs=Array.isArray(data.projects)?data.projects:[];const pm=Array.isArray(data[PM_KEY])?data[PM_KEY]:[];const source=pcs.length?pcs:pm.length?pm:SEED;const byKey=new Map();for(const p of [...pm,...pcs,...source]){const n=normalizeProject(p);const key=(n.full_name||n.name).split('/').pop().toLowerCase();byKey.set(key,{...(byKey.get(key)||{}),...n})}projects=[...byKey.values()];selected=new Set(data.selectedRepos||[]);logEntries=(data.activityLog||[]).slice(0,100).map(e=>({time:e.time||new Date().toLocaleTimeString(),message:e.message||'',type:e.type||e.kind||'info'}));chats=data.chatCandidates||[];if(data.githubToken)$('token').value=data.githubToken;$('chatDiagnostics').textContent=(data.chatScanDiagnostics||[]).join(' · ');await persist();renderLog();renderMatches();}
 function formatDate(ts){if(!ts)return '—';try{return new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'2-digit'}).format(new Date(ts))}catch{return '—'}}
@@ -142,59 +162,46 @@ function formProject(){const old=projects.find(p=>p.id===$('projectId').value);c
 function details(id){const p=projects.find(x=>x.id===id);if(!p)return;const links=projectLinks(p);$('detailContent').innerHTML=`<div class="detail-content"><div class="dialog-head"><div><div class="eyebrow">КАРТОЧКА ПРОЕКТА</div><h2>${esc(p.name)}</h2></div><button class="icon-btn" data-close="detailDialog">✕</button></div><p class="muted">${esc(p.description||'Описание не добавлено')}</p><span class="pill ${esc(p.status)}">${STATUS[p.status]}</span><div class="detail-links">${links.length?links.map(([n,u])=>`<a href="${esc(safeUrl(u))}" target="_blank" rel="noopener">${esc(n)} ↗<br><small>${esc(u)}</small></a>`).join(''):'<span class="muted">Ссылки не добавлены.</span>'}</div><div class="form-section-title">КАЧЕСТВО</div><div class="quality">${[['Аудит',p.audit],['SEO',p.seo],['Адаптивность',p.responsive],['Публикация',p.published]].map(([n,v])=>`<span class="${v?'ok':''}">${v?'✓':'○'} ${n}</span>`).join('')}</div><div class="detail-task"><b>СЛЕДУЮЩАЯ ЗАДАЧА</b><p>${esc(p.nextTask||'Не указана')}</p></div><div class="detail-task"><b>СОСТОЯНИЕ ЧАТА</b><p>${esc(p.chatTitle||p.chatUrl||'Чат не привязан')}</p><p>${esc(p.lastStatus||'Нет истории отправки')}</p></div><div class="dialog-actions"><button class="secondary-btn" data-close="detailDialog">Закрыть</button><button class="primary-btn" data-action="edit-from-detail" data-id="${esc(p.id)}">Изменить</button></div></div>`;$('detailDialog').showModal()}
 async function bindCurrent(p){
   try{
-    // Use only the active tab in the side panel's window to avoid binding a different chat.
-    const activeTabs=await chrome.tabs.query({active:true,lastFocusedWindow:true});
-    const tab=activeTabs&&activeTabs[0];
+    const focused=await chrome.windows.getLastFocused({populate:false});
+    const inWindow=focused?.id!=null?await chrome.tabs.query({windowId:focused.id}):[];
+    let tab=(inWindow||[]).find(t=>t.active&&/^https:\/\/(chatgpt\\.com|chat\\.openai\\.com)\/c\//.test(t.url||''));
+    if(!tab){
+      const all=await chrome.tabs.query({});
+      const chats=all.filter(t=>/^https:\/\/(chatgpt\\.com|chat\\.openai\\.com)\/c\//.test(t.url||''));
+      chats.sort((a,b)=>Number(b.active)-Number(a.active)||Number(b.lastAccessed||0)-Number(a.lastAccessed||0));
+      tab=chats[0]||null;
+    }
     if(!tab?.url){
-      notice('Не удалось определить активную вкладку. Откройте нужный диалог ChatGPT и повторите привязку.','error');
+      notice('Не найден открытый диалог ChatGPT. Откройте нужный чат в Chrome и повторите привязку.','error');
+      addLog(`${p.name}: ручная привязка — открытый диалог ChatGPT не найден`,'fail');
       return;
     }
-    let parsed;
-    try{parsed=new URL(tab.url)}catch(_){
-      notice('Не удалось прочитать адрес активной вкладки.','error');
-      return;
-    }
-    if(!['chatgpt.com','chat.openai.com'].includes(parsed.hostname)||!parsed.pathname.startsWith('/c/')){
-      notice('Сейчас активна не страница диалога ChatGPT. Переключитесь на нужный чат (адрес должен содержать /c/), затем нажмите «Привязать чат» ещё раз.','error');
-      return;
-    }
+    const parsed=new URL(tab.url);
     const url=parsed.origin+parsed.pathname.replace(/\/$/,'');
     const duplicate=projects.find(x=>{
       if(x.id===p.id||!x.chatUrl)return false;
       try{const u=new URL(x.chatUrl);return u.hostname===parsed.hostname&&u.pathname.replace(/\/$/,'')===parsed.pathname.replace(/\/$/,'')}catch(_){return false}
     });
     if(duplicate){
-      notice(`Этот чат уже привязан к проекту «${duplicate.name}». Сначала отвяжите его там.`,'error');
+      notice(`Этот чат уже привязан к проекту «${duplicate.name}».`,'error');
       return;
     }
-    p.chatUrl=url;
-    p.chatTitle=tab.title||p.name;
-    p.chatBinding='manual-current-active-tab';
-    p.chatBoundAt=new Date().toISOString();
-    p.chatCheck='available';
-    p.chatCheckAt=new Date().toISOString();
-    p.lastStatus='Чат привязан вручную; сохранение проверено';
-    p.lastResult='ok';
+    p.chatUrl=url;p.chatTitle=tab.title||p.name;p.chatBinding='manual-active-chat-tab';p.chatBoundAt=new Date().toISOString();p.chatCheck='available';p.chatCheckAt=new Date().toISOString();p.lastStatus='Ручная привязка сохранена';p.lastResult='ok';
     await persist();
     const saved=await chrome.storage.local.get(['projects',PM_KEY]);
     const savedProjects=Array.isArray(saved.projects)?saved.projects:(Array.isArray(saved[PM_KEY])?saved[PM_KEY]:[]);
     const confirmed=savedProjects.find(x=>x.id===p.id&&x.chatUrl===url);
     if(!confirmed){
-      p.chatUrl='';
-      p.chatTitle='';
-      p.chatBinding='';
-      p.lastStatus='Ошибка проверки сохранения привязки';
-      p.lastResult='fail';
-      await persist();
-      notice('Привязка не подтверждена: ссылка не найдена в локальном хранилище. Повторите попытку.','error');
-      addLog(`${p.name}: ошибка проверки сохранения ручной привязки`,'fail');
+      notice('Chrome не подтвердил сохранение ссылки на чат. Привязка не засчитана.','error');
+      addLog(`${p.name}: ошибка подтверждения сохранения привязки`,'fail');
       return;
     }
-    notice(`Чат успешно привязан к проекту «${p.name}».`,'ok');
-    addLog(`${p.name}: вручную привязан активный чат ${url}; сохранение подтверждено`,'ok');
+    notice(`Чат привязан к «${p.name}»: ${parsed.hostname}.`,'ok');
+    addLog(`${p.name}: привязан чат ${url}; сохранение подтверждено`,'ok');
   }catch(error){
     console.error('PROJECT MANAGER PRO bindCurrent error:',error);
-    notice(`Не удалось привязать чат: ${error?.message||'неизвестная ошибка'}`,'error');
+    notice(`Ошибка ручной привязки: ${error?.message||'неизвестная ошибка'}`,'error');
+    addLog(`${p.name}: ошибка ручной привязки — ${error?.message||'неизвестная ошибка'}`,'fail');
   }
 }
 async function syncGithub(){const token=$('token').value.trim();if(token)await chrome.storage.local.set({githubToken:token});$('syncGithub').disabled=true;notice('Синхронизируем репозитории GitHub…');try{const r=await chrome.runtime.sendMessage({type:'PCS_SYNC_REPOSITORIES'});if(!r?.ok){const m={'missing-token':'Сохраните GitHub-токен или используйте сканирование открытой страницы.','http-401':'GitHub отклонил токен.','http-403':'Недостаточно прав или превышен лимит GitHub API.','invalid-response':'GitHub вернул неожиданный ответ.'};throw new Error(m[r?.reason]||`Ошибка GitHub: ${r?.reason||'неизвестно'}`)}const d=await chrome.storage.local.get(['projects','lastRepoSync']);const merged=new Map();for(const raw of (d.projects||[])){const item=normalizeProject(raw),key=(item.full_name||item.name).split('/').pop().toLowerCase();merged.set(key,{...(merged.get(key)||{}),...item})}projects=[...merged.values()].map(normalizeProject);await persist();notice(`GitHub обновлён: ${r.count} репозиториев, новых: ${r.newRepos?.length||0}.`,'ok');addLog(`Синхронизация GitHub: ${r.count} репозиториев`,'ok')}catch(e){notice(e.message,'error')}finally{$('syncGithub').disabled=false}}
@@ -204,7 +211,7 @@ async function preflight(){const linked=projects.filter(p=>p.chatUrl);if(!linked
 async function batch(selectedOnly){const queue=projects.filter(p=>p.chatUrl&&/^https:\/\/(chatgpt\.com|chat\.openai\.com)\/c\//.test(p.chatUrl)&&(!selectedOnly||selected.has(p.full_name||p.name)));if(!queue.length){notice(selectedOnly?'Среди выбранных проектов нет привязанных доступных чатов.':'Нет привязанных доступных чатов.','error');return}const cycleCount=Math.max(1,Math.min(1000,parseInt($('cycleCount').value,10)||1));const interval=Math.max(1,Math.min(3600,parseInt($('cycleInterval').value,10)||10));$('queueState').textContent='Выполняется';$('progress').textContent=`Запуск: ${queue.length} проектов · ${cycleCount} циклов`;try{const r=await chrome.runtime.sendMessage({type:'PCS_RUN_QUEUE',projects:queue.map(p=>({...p,full_name:p.full_name||p.name})),cycleCount,cycleIntervalSeconds:interval});if(!r?.ok)throw new Error(r?.error||'Очередь не запустилась');$('progress').textContent=r.summary;$('queueState').textContent=r.stopped?'Остановлена':'Завершена';addLog(r.summary,r.failed?'fail':'ok');const d=await chrome.storage.local.get('projects');projects=(d.projects||projects).map(normalizeProject);render()}catch(e){$('queueState').textContent='Ошибка';$('progress').textContent=e.message;notice(e.message,'error')}}
 function projectMenu(id){const p=projects.find(x=>x.id===id);if(!p)return;const choice=prompt(`Действия для «${p.name}»:\n1 — открыть рабочий чат\n2 — архивировать / восстановить\n3 — удалить\n4 — открыть все ссылки`);if(choice==='1')openLink(p.chatUrl);else if(choice==='2'){p.status=p.status==='archived'?'planned':'archived';p.updatedAt=Date.now();persist().then(()=>toast(p.status==='archived'?'Проект архивирован':'Проект восстановлен'))}else if(choice==='3'&&confirm(`Удалить «${p.name}»?`)){projects=projects.filter(x=>x.id!==id);selected.delete(p.full_name||p.name);persist().then(()=>toast('Проект удалён'))}else if(choice==='4')projectLinks(p).forEach(x=>openLink(x[1]))}
 
-const PMPRO_VERSION='1.10.7';
+const PMPRO_VERSION='1.10.8';
 function setUpdateStatus(message,kind=''){
   const el=$('updateStatus'); if(!el)return;
   el.textContent=message; el.className=`update-status ${kind}`;
