@@ -231,7 +231,7 @@
     return {ok:false};
   }
   async function waitForSendButton(composer){
-    for(let i=0;i<50;i++){
+    for(let i=0;i<20;i++){
       const button=sendButtonFor(composer);
       if(button && !button.disabled && button.getAttribute('aria-disabled')!=='true')return button;
       await sleep(100);
@@ -272,23 +272,23 @@
     if(button && !button.disabled && button.getAttribute('aria-disabled')!=='true') button.click();
     else method=submitByKeyboard(composer);
 
-    let confirmation=await waitForSubmitted(beforeCount,composer,2000,command);
+    let confirmation=await waitForSubmitted(beforeCount,composer,1500,command);
     if(confirmation.ok)return {ok:true,submitted:true,method,attempts:1,text:command};
 
     const remaining=composerText(composer);
     if(remaining===''){
-      confirmation=await waitForSubmitted(beforeCount,composer,8000,command);
+      confirmation=await waitForSubmitted(beforeCount,composer,3500,command);
       if(confirmation.ok)return {ok:true,submitted:true,method:`${method}-delayed-render`,attempts:1,text:command};
       return {ok:false,error:'Редактор очистился после отправки, но сообщение не появилось в истории за 10 секунд. Повтор отменён, чтобы избежать дубликата.'};
     }
     if(remaining!==command)return {ok:false,error:`После первой попытки в редакторе неожиданное содержимое: «${remaining}». Повтор отменён.`};
 
-    await sleep(2000);
+    await sleep(700);
     button=await waitForSendButton(composer);
     lastSendAttempt={at:Date.now(),beforeCount,beforeAssistantCount,text:command,attempts:2};
     if(button && !button.disabled && button.getAttribute('aria-disabled')!=='true') { button.click(); method='automatic-retry-after-2s'; }
     else method=submitByKeyboard(composer);
-    confirmation=await waitForSubmitted(beforeCount,composer,8000,command);
+    confirmation=await waitForSubmitted(beforeCount,composer,5000,command);
     if(confirmation.ok)return {ok:true,submitted:true,method,attempts:2,text:command};
     return {ok:false,error:`ChatGPT не подтвердил отправку после двух попыток. Поле ввода: ${composer.tagName}#${composer.id||'-'}, текст в поле: ${composerText(composer).slice(0,180)||'(пусто)'}, кнопка отправки: ${sendButtonFor(composer)?'найдена':'не найдена'}.`};
   }
