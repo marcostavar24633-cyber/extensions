@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "PROJECT MANAGER PRO — Chat & GitHub",
-  "version": "1.10.3",
-  "description": "PROJECT MANAGER PRO: исправлена ручная привязка чатов и последовательная обработка всех проектов в цикле.",
+  "version": "1.10.4",
+  "description": "PROJECT MANAGER PRO: отдельная компактная панель адреса сайта в каждой карточке проекта.",
   "minimum_chrome_version": "114",
   "permissions": [
     "storage",
