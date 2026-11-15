@@ -6,3 +6,13 @@
 
 .update-btn{white-space:nowrap;padding:7px 10px;font-size:10px}.update-status{margin:8px 2px 0;padding:6px 9px;border:1px solid var(--line);border-radius:8px;color:var(--muted);font-size:10px}.update-status.ok{color:var(--green);border-color:#70d6a255}.update-status.error{color:var(--red);border-color:#e78d9155}.update-btn:disabled{opacity:.65;cursor:wait}
 
+
+/* Compact, project-specific website address */
+.site-address-panel{display:flex;align-items:center;gap:8px;min-width:0;margin:7px 0 0 39px;padding:6px 8px;border:1px solid #3a3547;border-radius:8px;background:linear-gradient(100deg,#282431,#20222b);color:var(--text);text-decoration:none;max-width:calc(100% - 39px)}
+.site-address-panel:hover{border-color:var(--accent2);background:#302a3b}
+.site-address-label{flex:0 0 auto;font-size:8px;letter-spacing:.1em;font-weight:800;color:var(--accent)}
+.site-address-value{min-width:0;flex:1;font-size:9px;color:#d4d0df;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.site-address-open{flex:0 0 auto;color:var(--green);font-size:11px}
+.site-address-empty{cursor:default;border-style:dashed;background:#20222a}
+.site-address-empty .site-address-value{color:var(--muted)}
+.site-address-empty:hover{border-color:var(--line);background:#20222a}
