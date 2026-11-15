@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PROJECT MANAGER PRO — Chat & GitHub",
-  "version": "1.10.8",
+  "version": "1.10.9",
   "description": "PROJECT MANAGER PRO: исправлена ручная привязка к открытым диалогам ChatGPT; проекты сопоставляются с GitHub-репозиториями для адресов Pages.",
   "minimum_chrome_version": "114",
   "permissions": [
