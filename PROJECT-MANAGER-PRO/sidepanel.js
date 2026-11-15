@@ -63,7 +63,7 @@ async function waitForTabReady(tabId,timeout=25000){
   while(Date.now()-start<timeout){
     try{
       const tab=await chrome.tabs.get(tabId);
-      if(tab.status==='complete' && /^https:\/\/(chatgpt\\.com|chat\\.openai\\.com)\\//.test(tab.url||''))return tab;
+      if(tab.status==='complete' && /^https:\/\/(chatgpt\.com|chat\.openai\.com)\//.test(tab.url||''))return tab;
     }catch(_){throw new Error('Вкладка ChatGPT была закрыта до завершения создания чата.')}
     await delay(250);
   }
@@ -103,7 +103,7 @@ async function createRepoChat(p){
     });
     if(!result?.ok)throw new Error(result?.error||'Не удалось отправить название проекта в ChatGPT.');
     const chatUrl=safeUrl(result.chatUrl);
-    if(!chatUrl||!/^https:\/\/(chatgpt\\.com|chat\\.openai\\.com)\/c\/[^/]+/.test(chatUrl))throw new Error('ChatGPT не вернул корректный URL нового диалога; привязка не сохранена.');
+    if(!chatUrl||!/^https:\/\/(chatgpt\.com|chat\.openai\.com)\/c\/[^/]+/.test(chatUrl))throw new Error('ChatGPT не вернул корректный URL нового диалога; привязка не сохранена.');
     const current=projects.find(x=>x.id===p.id);
     if(!current)throw new Error('Проект больше не найден в каталоге.');
     current.chatUrl=chatUrl;
