@@ -1,5 +1,5 @@
 (() => {
-  const PCS_BUILD = '1.4.12';
+  const PCS_BUILD = '1.4.13';
   if (window.__pcsProLoadedVersion === PCS_BUILD) return;
   window.__pcsProLoadedVersion = PCS_BUILD;
   window.__pcsProLoaded = true;
@@ -321,81 +321,69 @@
     const projectName=String(message.projectName||'').trim();
     const repoFullName=String(message.repoFullName||'').trim();
     const repoUrl=String(message.repoUrl||'').trim();
-    if(!projectName) return {ok:false,error:'Не задано название проекта.'};
-    if(!/^https:\/\/github\.com\/[^/]+\/[^/]+\/?$/.test(repoUrl)) return {ok:false,error:'Для проекта нужна корректная ссылка GitHub на репозиторий.'};
+    if(!projectName)return {ok:false,error:'Не задано название проекта.'};
+    if(!/^https:\/\/github\.com\/[^/]+\/[^/]+\/?$/.test(repoUrl))return {ok:false,error:'Для проекта нужна корректная ссылка GitHub на репозиторий.'};
 
-    // Start the first message with the exact project title so it is unmistakable
-    // in the conversation and is never reduced to a generic "new project" prompt.
     const prompt=[
       `Проект: ${projectName}`,
       `Название проекта: ${projectName}`,
-      repoFullName ? `Репозиторий: ${repoFullName}` : '',
+      repoFullName?`Репозиторий: ${repoFullName}`:'',
       `GitHub: ${repoUrl}`,
       '',
-      `Это отдельный рабочий чат проекта «${projectName}». Сохраняй это название и используй его как основной контекст дальнейшей работы. Подтверди, что проект распознан.`
+      `Это отдельный рабочий чат проекта «${projectName}». Считай это название главным идентификатором проекта во всей дальнейшей работе. Не заменяй его названием репозитория. Подтверди название проекта.`
     ].filter(Boolean).join('\n');
 
-    const started=Date.now();
-    let composer=null;
-    while(Date.now()-started<90000){
-      composer=findComposer();
-      if(composer)break;
-      await sleep(400);
+    // Wait only for a genuinely visible composer; fail fast instead of hanging for 90 seconds.
+    let composer=findComposer();
+    if(!composer){
+      const started=Date.now();
+      while(Date.now()-started<20000){
+        await sleep(250);
+        composer=findComposer();
+        if(composer)break;
+      }
     }
-    if(!composer) return {ok:false,error:'ChatGPT не показал видимое поле ввода за 90 секунд. Проверьте авторизацию и доступность страницы.'};
+    if(!composer)return {ok:false,error:'Поле ввода ChatGPT не появилось за 20 секунд. Проверьте, что страница открыта и вы вошли в аккаунт.'};
 
     const beforeCount=userMessages().length;
-    let actual='';
-    try {
-      actual=setComposerText(composer,prompt);
-      // Explicitly notify React/ProseMirror editors after native insertion.
-      composer.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:prompt}));
-      composer.dispatchEvent(new Event('change',{bubbles:true}));
-    } catch(e) {
-      return {ok:false,error:`Не удалось вставить название проекта в поле ChatGPT: ${e.message}`};
-    }
-    if(normalizeForCompare(actual)!==normalizeForCompare(prompt) ||
-       normalizeForCompare(composerText(composer))!==normalizeForCompare(prompt)){
-      return {ok:false,error:`Название проекта не попало в поле ввода. Ожидалось ${prompt.length} символов, в поле ${composerText(composer).length}.`};
-    }
+    try{
+      composer.click();
+      const actual=setComposerText(composer,prompt);
+      if(normalizeForCompare(actual)!==normalizeForCompare(prompt) ||
+         normalizeForCompare(composerText(composer))!==normalizeForCompare(prompt)){
+        return {ok:false,error:`Не удалось вставить название проекта. В поле ${composerText(composer).length} из ${prompt.length} символов.`};
+      }
+    }catch(e){return {ok:false,error:`Ошибка ввода названия проекта: ${e.message}`};}
 
-    await sleep(350);
-    let button=await waitForSendButton(composer);
-    let method='send-button-click';
-    if(button && !button.disabled && button.getAttribute('aria-disabled')!=='true') button.click();
-    else method=submitByKeyboard(composer);
+    // Give React one short render turn, then click the actual enabled send control.
+    await sleep(100);
+    let button=sendButtonFor(composer);
+    if(button && !button.disabled && button.getAttribute('aria-disabled')!=='true')button.click();
+    else submitByKeyboard(composer);
 
-    let confirmation=await waitForSubmitted(beforeCount,composer,15000,prompt);
+    let confirmation=await waitForSubmitted(beforeCount,composer,5000,prompt);
     if(!confirmation.ok){
-      const remaining=composerText(composer);
-      if(remaining===normalizeForCompare(prompt) || normalizeForCompare(remaining)===normalizeForCompare(prompt)){
-        // Retry only while the exact same text remains in the editor; this avoids
-        // duplicate project messages when ChatGPT already accepted the first send.
-        await sleep(2000);
-        button=await waitForSendButton(composer);
-        if(button && !button.disabled && button.getAttribute('aria-disabled')!=='true') {
-          button.click(); method='retry-send-button-after-2s';
-        } else {
-          method=submitByKeyboard(composer);
-        }
-        confirmation=await waitForSubmitted(beforeCount,composer,15000,prompt);
-      } else if(remaining===''){
-        confirmation=await waitForSubmitted(beforeCount,composer,10000,prompt);
-        method+='-delayed-render';
+      const remaining=normalizeForCompare(composerText(composer));
+      if(remaining===normalizeForCompare(prompt)){
+        await sleep(700);
+        button=sendButtonFor(composer);
+        if(button && !button.disabled && button.getAttribute('aria-disabled')!=='true')button.click();
+        else submitByKeyboard(composer);
+        confirmation=await waitForSubmitted(beforeCount,composer,5000,prompt);
+      }else if(!remaining){
+        confirmation=await waitForSubmitted(beforeCount,composer,3000,prompt);
       }
     }
-    if(!confirmation.ok){
-      return {ok:false,error:`ChatGPT не подтвердил отправку названия проекта «${projectName}». Поле ввода: ${composerText(composer).slice(0,120)||'(пусто)'}. Кнопка отправки: ${sendButtonFor(composer)?'найдена':'не найдена'}. Повторите создание чата после обновления вкладки ChatGPT.`};
-    }
+    if(!confirmation.ok)return {ok:false,error:`Не подтверждена отправка сообщения с названием проекта «${projectName}». Повторите после обновления вкладки ChatGPT.`};
 
     const routeStarted=Date.now();
-    while(Date.now()-routeStarted<60000){
+    while(Date.now()-routeStarted<20000){
       if(/\/c\/[a-zA-Z0-9-]+/.test(location.pathname)){
-        return {ok:true,chatUrl:location.href,chatTitle:projectName,submitted:true,verified:true,method};
+        return {ok:true,chatUrl:location.href,chatTitle:projectName,projectName,submitted:true,verified:true};
       }
-      await sleep(250);
+      await sleep(200);
     }
-    return {ok:false,error:`Название проекта «${projectName}» отправлено и отображается в истории, но ChatGPT не создал URL нового диалога за 60 секунд. Чат не привязан автоматически.`};
+    return {ok:false,error:`Название проекта «${projectName}» отправлено, но URL нового чата не появился за 20 секунд. Проверьте вкладку ChatGPT.`};
   }
 
   chrome.runtime.onMessage.addListener((message,_sender,sendResponse)=>{
