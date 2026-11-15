@@ -72,7 +72,7 @@ async function sendInBackgroundTab(project) {
     await ensureContentScript(tab.id);
     let ready = false;
     let lastError = "Чат загружен в фоновой вкладке, ожидаю поле ввода.";
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 60; i++) {
       try {
         const current = await chrome.tabs.get(tab.id);
         const currentUrl = new URL(current.url || "");
@@ -84,7 +84,7 @@ async function sendInBackgroundTab(project) {
           lastError = check?.error || "Поле ввода пока не готово.";
         }
       } catch (e) { lastError = e.message || "Ожидаю загрузки интерфейса ChatGPT."; }
-      await sleep(500);
+      await sleep(250);
     }
     if (!ready) throw new Error(`${lastError} Проверьте авторизацию ChatGPT и доступность чата.`);
     // Inspect the last assistant answer. If it contains a concrete next task,
@@ -108,7 +108,7 @@ async function sendInBackgroundTab(project) {
       ? await chrome.tabs.sendMessage(tab.id, { type: "PCS_V1412_SEND_TEXT", text: action.prompt })
       : await chrome.tabs.sendMessage(tab.id, { type: "PCS_V1412_SEND_NEXT" });
     if (!result?.ok) throw new Error(result?.error || "ChatGPT не подтвердил отправку команды.");
-    await sleep(900);
+    await sleep(250);
     const verify = await chrome.tabs.sendMessage(tab.id, { type: "PCS_V1412_VERIFY_SENT" });
     if (!verify?.ok) throw new Error(verify?.error || "Сообщение не подтверждено в истории чата.");
 
@@ -174,9 +174,9 @@ async function runQueue(projects, cycleCount=1, cycleIntervalSeconds=10) {
         try { await processProject(projects[i]); completed++; }
         catch(_) { failed++; }
         if(i<projects.length-1 && !queueState.stop) {
-          for(let t=0;t<3000 && !queueState.stop;t+=200) {
+          for(let t=0;t<500 && !queueState.stop;t+=100) {
             while(queueState.paused && !queueState.stop) await sleep(250);
-            await sleep(200);
+            await sleep(100);
           }
         }
       }
